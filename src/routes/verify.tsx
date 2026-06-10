@@ -24,14 +24,12 @@ export const Route = createFileRoute("/verify")({
   }),
 });
 
+// ─── PASTE YOUR PUBLIC KEY HERE ───────────────────────────────────────────────
+// After you seal your first image with SealEmbed.tsx, download the public key
+// and paste the base64 content (between the -----BEGIN/END----- lines) below.
+// Every sealed image shares this one public key.
 const INKORYX_PUBLIC_KEY_B64 = `
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu0uxghc8L8j5JO3tyovH
-grj9MTpBNGofWvESxLttufg7ziWqGGcWy/ld8p4IZv8WVrbpW/wWX1ORxKPhQttt
-f3jGzjLnDVJWRAPz1eAXvyKCTcaVyOY0CXCKszPg4rY+o1AyyoVQyGnvZHJG5of3
-75X74FJme5dF3XyUbSSN7VfvUs1u2hRo+vfng46H9MU2cIGbij1f0ev0ervVL3T+
-tiZVIx4aE9wlXcPIJFngK59MbyxjPfwhne26vZk7MgHeV+OqM/nwKRf3rpJzA0vF
-HHrEUuYCf2+cd4J1+0Lr4NOHnuch6pX/4m86V3Nb3hY8kpgS8ijjWpV2I8qOiWrM
-TQIDAQAB
+REPLACE_WITH_YOUR_PUBLIC_KEY_BASE64_HERE
 `.trim();
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -183,60 +181,6 @@ function VerifyPage() {
   const handleFile = useCallback(async (file: File) => {
     setResult({ state: "checking", fileName: file.name });
     try {
-      const pixels = await readPixels(file);
-      console.log("1. Pixels read:", pixels ? pixels.length : "FAILED");
-      if (!pixels) {
-        setResult({ state: "failed", fileName: file.name, reason: "File is not a readable image." });
-        return;
-      }
-      const payload = extractLsbPayload(pixels);
-      console.log("2. Payload extracted:", payload);
-      if (!payload || !payload.signature) {
-        setResult({ state: "failed", fileName: file.name, reason: "No cryptographic seal detected." });
-        return;
-      }
-      console.log("3. Hash in payload:", payload.hash);
-      console.log("4. Payload version:", payload.v);
-
-      if (payload.v && payload.v >= 2) {
-        const bitmap = await createImageBitmap(file);
-        const canvas = document.createElement("canvas");
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        const ctx = canvas.getContext("2d")!;
-        ctx.drawImage(bitmap, 0, 0);
-        const pngBlob = await new Promise<Blob>((res) => canvas.toBlob((b) => res(b!), "image/png"));
-        const currentHash = await sha256Hex(await pngBlob.arrayBuffer());
-        console.log("5. Current hash:", currentHash);
-        console.log("6. Stored hash:", payload.hash);
-        console.log("7. Hash match:", currentHash === payload.hash);
-
-        if (currentHash !== payload.hash) {
-          setResult({ state: "failed", fileName: file.name, reason: "File integrity check failed." });
-          return;
-        }
-
-        const pubKey = await importPublicKey(INKORYX_PUBLIC_KEY_B64);
-        console.log("8. Public key imported:", pubKey ? "YES" : "FAILED");
-        if (!pubKey) {
-          setResult({ state: "failed", fileName: file.name, reason: "Could not load public key." });
-          return;
-        }
-
-        const valid = await verifyRsaSignature(pubKey, payload.hash, payload.signature);
-        console.log("9. RSA signature valid:", valid);
-        if (!valid) {
-          setResult({ state: "failed", fileName: file.name, reason: "RSA signature verification failed." });
-          return;
-        }
-      }
-
-      setResult({ state: "verified", fileName: file.name, payload });
-    } catch (err) {
-      console.log("ERROR:", err);
-      setResult({ state: "failed", fileName: file.name, reason: "Unable to process this file." });
-    }
-  }, []);
       // 1. Read pixels
       const pixels = await readPixels(file);
       if (!pixels) {
@@ -443,4 +387,3 @@ function Field({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
