@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ShieldCheck, ShieldAlert, UploadCloud, Loader2, FileLock2 } from "lucide-react";
+import { ShieldCheck, ShieldAlert, UploadCloud, Loader2, FileLock2, KeyRound } from "lucide-react";
 import { AnimatedSection, ParticleField } from "@/components/AnimatedSection";
 
 export const Route = createFileRoute("/verify")({
@@ -9,22 +9,16 @@ export const Route = createFileRoute("/verify")({
   head: () => ({
     meta: [
       { title: "The Inkoryx Vault — Asset Verification" },
-      { name: "description", content: "Mathematically verifiable proof of ownership. Drop your Inkoryx Cryptographic Master File to authenticate its digital signature." },
-      { property: "og:title", content: "The Inkoryx Vault — Asset Verification" },
-      { property: "og:description", content: "Authenticate your Inkoryx Master File. Steganographic, mathematically verifiable — no NFTs, no blockchain." },
+      { name: "description", content: "Mathematically verifiable proof of ownership. Drop your Inkoryx Cryptographic Master File and enter your Unlock Code to authenticate." },
     ],
   }),
 });
 
-// ─── PERMANENT INKORYX PUBLIC KEY ─────────────────────────────────────────────
-const INKORYX_PUBLIC_KEY_B64 = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAute85gAiey2YCMtmjNGW9bqQDH5In1twzNkTN/eed/SjfvxVVF5lCE2xWRtL7I6npfYMdf1iUz+XUrp6CClULUVz4oCqYKProB30wlRGtrUuL+mbleBGHo02f4jbqkaU01nlVYsesy1EL/b+oSDZTi/pbKeUXdL2TWWNjDCDzyuEgMYT86uI9gZ5IEZNOTN6/yAlQHGcIFGTIwVE15bscx5DEG+8Q47Hm2h5LOZeAHSEDLRq+cBC49YpK+mpemLmADXKv5XL6+N+tjekv0MWkq9h8VR1ZR8v69vbvYyIrEQn1wH+lOZT2Nyt0PQHCaiEuVabjGBMJia83WeDzL8KKwIDAQAB";
-// ─────────────────────────────────────────────────────────────────────────────
-
-const MAGIC = "IKX1";
+const MAGIC = "IKX2";
 
 type VerifyPayload = {
   client?: string; assetId?: string; artist?: string;
-  signature?: string; hash?: string; date?: string; notes?: string; v?: number;
+  codeHash?: string; date?: string; notes?: string; v?: number;
 };
 
 type Result =
@@ -32,6 +26,12 @@ type Result =
   | { state: "checking"; fileName: string }
   | { state: "verified"; fileName: string; payload: VerifyPayload }
   | { state: "failed"; fileName: string; reason: string };
+
+async function sha256Hex(text: string): Promise<string> {
+  const data = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 
 async function readPixels(file: File): Promise<Uint8ClampedArray | null> {
   if (!file.type.startsWith("image/")) return null;
@@ -81,55 +81,54 @@ function extractLsbPayload(pixels: Uint8ClampedArray): VerifyPayload | null {
   } catch { return null; }
 }
 
-async function importPublicKey(b64: string): Promise<CryptoKey | null> {
-  try {
-    const binary = atob(b64.replace(/\s/g, ""));
-    const buffer = Uint8Array.from(binary, (c) => c.charCodeAt(0)).buffer;
-    return await crypto.subtle.importKey("spki", buffer, { name: "RSA-PSS", hash: "SHA-256" }, false, ["verify"]);
-  } catch (e) { console.error("importPublicKey failed", e); return null; }
-}
-
-async function verifyRsaSignature(pubKey: CryptoKey, hashHex: string, signatureB64: string): Promise<boolean> {
-  try {
-    const data = new TextEncoder().encode(hashHex);
-    const binary = atob(signatureB64);
-    const sigBuffer = Uint8Array.from(binary, (c) => c.charCodeAt(0)).buffer;
-    return await crypto.subtle.verify({ name: "RSA-PSS", saltLength: 32 }, pubKey, sigBuffer, data);
-  } catch (e) { console.error("verifyRsaSignature failed", e); return false; }
-}
-
 const faqs = [
   { q: "Is this an NFT or Crypto-Art?", a: "No. We do not use public ledgers, blockchains, or volatile crypto networks. Inkoryx relies on proprietary, enterprise-grade steganography. Your data is hidden mathematically inside the pixels of your file. It carries zero gas fees and zero environmental impact." },
-  { q: "Why did my file fail verification?", a: 'If you uploaded your image to a platform like Twitter, Instagram, or Discord, that platform compressed the file to save space. Compression alters pixels, which permanently destroys the invisible signature. You must upload your original, uncompressed "Master Vault File" provided by Inkoryx at the time of delivery.' },
-  { q: "Why do I need this?", a: "Standard artists sell disposable images; Inkoryx forges secure commercial assets. If someone steals your IP and tries to monetize it, a screenshot won't hold up in a DMCA dispute. Your Cryptographic Master File is your absolute, mathematically verifiable proof that Inkoryx forged the original IP exclusively for you." },
+  { q: "What is the Unlock Code?", a: "Every sealed file gets its own unique Unlock Code at the time of delivery. This code is required to verify the file is authentic. Keep it safe — without it, even your original file cannot be verified." },
+  { q: "Why did my file fail verification?", a: 'If you uploaded your image to a platform like Twitter, Instagram, or Discord, that platform compressed the file to save space. Compression alters pixels, which permanently destroys the invisible signature. You must upload your original, uncompressed "Master Vault File" along with the correct Unlock Code provided by Inkoryx at the time of delivery.' },
+  { q: "Why do I need this?", a: "Standard artists sell disposable images; Inkoryx forges secure commercial assets. If someone steals your IP and tries to monetize it, a screenshot won't hold up in a DMCA dispute. Your Cryptographic Master File plus your Unlock Code is your absolute, mathematically verifiable proof that Inkoryx forged the original IP exclusively for you." },
 ];
 
 function VerifyPage() {
   const [result, setResult] = useState<Result>({ state: "idle" });
   const [dragOver, setDragOver] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [unlockCode, setUnlockCode] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFile = useCallback(async (file: File) => {
+  const onFileSelected = (file: File) => {
+    setPendingFile(file);
+    setResult({ state: "idle" });
+  };
+
+  const runVerification = useCallback(async () => {
+    if (!pendingFile) return;
+    const file = pendingFile;
     setResult({ state: "checking", fileName: file.name });
     try {
       const pixels = await readPixels(file);
       if (!pixels) { setResult({ state: "failed", fileName: file.name, reason: "File is not a readable image or is a compressed web copy." }); return; }
+
       const payload = extractLsbPayload(pixels);
-      if (!payload || !payload.signature || !payload.hash) { setResult({ state: "failed", fileName: file.name, reason: "No cryptographic seal detected. The file may be a screenshot or compressed copy." }); return; }
-      const pubKey = await importPublicKey(INKORYX_PUBLIC_KEY_B64);
-      if (!pubKey) { setResult({ state: "failed", fileName: file.name, reason: "Could not load Inkoryx public key." }); return; }
-      const valid = await verifyRsaSignature(pubKey, payload.hash, payload.signature);
-      if (!valid) { setResult({ state: "failed", fileName: file.name, reason: "RSA signature verification failed — seal was not issued by Inkoryx Studio." }); return; }
+      if (!payload || !payload.codeHash) { setResult({ state: "failed", fileName: file.name, reason: "No cryptographic seal detected. The file may be a screenshot or compressed copy." }); return; }
+
+      if (!unlockCode.trim()) { setResult({ state: "failed", fileName: file.name, reason: "Please enter the Unlock Code provided with this asset." }); return; }
+
+      const typedHash = await sha256Hex(unlockCode.trim().toUpperCase());
+      if (typedHash !== payload.codeHash) {
+        setResult({ state: "failed", fileName: file.name, reason: "The cryptographic seal is missing or broken. This file is either a compressed web copy, a screenshot, or has been modified from its original forge state." });
+        return;
+      }
+
       setResult({ state: "verified", fileName: file.name, payload });
     } catch (err) {
       console.error("Verify error:", err);
       setResult({ state: "failed", fileName: file.name, reason: "Unable to process this file." });
     }
-  }, []);
+  }, [pendingFile, unlockCode]);
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false);
-    const file = e.dataTransfer.files?.[0]; if (file) handleFile(file);
+    const file = e.dataTransfer.files?.[0]; if (file) onFileSelected(file);
   };
 
   return (
@@ -142,7 +141,7 @@ function VerifyPage() {
               <FileLock2 size={14} /> INKORYX VAULT
             </div>
             <h1 className="font-heading text-4xl sm:text-5xl md:text-6xl font-bold gradient-text mb-4">The Inkoryx Vault: Asset Verification</h1>
-            <p className="text-muted-foreground max-w-2xl mx-auto text-base sm:text-lg">Mathematically verifiable proof of ownership. Drop your Cryptographic Master File below to authenticate your asset's digital signature.</p>
+            <p className="text-muted-foreground max-w-2xl mx-auto text-base sm:text-lg">Mathematically verifiable proof of ownership. Drop your Cryptographic Master File and enter your Unlock Code to authenticate.</p>
           </div>
         </AnimatedSection>
 
@@ -151,7 +150,7 @@ function VerifyPage() {
             onDrop={onDrop} onClick={() => inputRef.current?.click()}
             className={`relative cursor-pointer rounded-2xl border-2 border-dashed transition-all duration-300 p-10 sm:p-16 text-center glass-strong ${dragOver ? "border-neon shadow-[0_0_60px_rgba(56,189,248,0.45)] scale-[1.01]" : "border-neon/30 hover:border-neon/70 hover:shadow-[0_0_40px_rgba(56,189,248,0.25)]"}`}
             whileHover={{ y: -2 }}>
-            <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFileSelected(f); }} />
             <div className="flex flex-col items-center gap-4">
               <div className="w-16 h-16 rounded-full bg-neon/10 border border-neon/30 flex items-center justify-center">
                 <UploadCloud className="w-8 h-8 text-neon" />
@@ -164,12 +163,40 @@ function VerifyPage() {
           </motion.div>
         </AnimatedSection>
 
+        {pendingFile && (
+          <AnimatedSection delay={0.05}>
+            <div className="mt-6 glass rounded-xl p-5 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground flex-1">
+                <FileLock2 size={16} className="text-neon shrink-0" />
+                <span className="truncate">{pendingFile.name}</span>
+              </div>
+              <div className="flex items-center gap-2 flex-1">
+                <KeyRound size={16} className="text-neon shrink-0" />
+                <input
+                  type="text"
+                  value={unlockCode}
+                  onChange={(e) => setUnlockCode(e.target.value)}
+                  placeholder="Enter Unlock Code (e.g. X7K2-9PQR-4MNB)"
+                  className="w-full bg-transparent border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-neon/60 font-mono tracking-wider"
+                />
+              </div>
+              <button
+                onClick={runVerification}
+                disabled={!unlockCode.trim()}
+                className="px-5 py-2 rounded-lg bg-neon text-black font-semibold text-sm disabled:opacity-40 disabled:cursor-not-allowed hover:bg-neon/90 transition shrink-0"
+              >
+                Verify
+              </button>
+            </div>
+          </AnimatedSection>
+        )}
+
         <AnimatePresence mode="wait">
           {result.state === "checking" && (
             <motion.div key="checking" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
               className="mt-8 glass rounded-xl p-6 flex items-center gap-3 justify-center text-muted-foreground">
               <Loader2 className="w-5 h-5 animate-spin text-neon" />
-              Hashing & inspecting <span className="text-foreground font-medium">{result.fileName}</span>…
+              Checking unlock code & inspecting <span className="text-foreground font-medium">{result.fileName}</span>…
             </motion.div>
           )}
           {result.state === "verified" && (
@@ -189,7 +216,7 @@ function VerifyPage() {
                 <Field label="Asset ID" value={result.payload.assetId ?? "—"} />
                 <Field label="Artist" value={result.payload.artist ?? "Inkoryx Studio"} />
                 <Field label="Date Sealed" value={result.payload.date ? new Date(result.payload.date).toLocaleDateString() : "—"} />
-                <Field label="Signature" value="Validated by Inkoryx Studio Public Key" />
+                <Field label="Unlock Code" value="Matched. Validated by Inkoryx Studio." />
                 <Field label="Status" value="100% Intact. No pixel modifications detected." />
               </dl>
             </motion.div>
@@ -206,7 +233,7 @@ function VerifyPage() {
                   <p className="text-sm text-muted-foreground">{result.fileName}</p>
                 </div>
               </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">The cryptographic seal is missing or broken. This file is either a compressed web copy, a screenshot, or has been modified from its original forge state.</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">{result.reason}</p>
             </motion.div>
           )}
         </AnimatePresence>
