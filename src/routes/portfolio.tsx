@@ -16,7 +16,7 @@ export const Route = createFileRoute("/portfolio")({
 const TEAL = "#00E5CC";
 const PER_PAGE = 6;
 
-const filters = ["All", "2D Art", "3D Models", "Animations", "Pixel Art", "UI & Brands"] as const;
+const filters = ["All", "2D Art", "3D Models", "Animations", "Pixel Art", "UI & Brands", "Book Covers"] as const;
 type Filter = typeof filters[number];
 type Cat = Exclude<Filter, "All">;
 
@@ -34,52 +34,33 @@ const buildItems = (): Item[] => {
 
   // 2D Art — 24 images
   for (let i = 1; i <= 24; i++) {
-    out.push({
-      id: `2dart-${i}`,
-      category: "2D Art",
-      type: "image",
-      src: `/portfolio/2dart-1 (${i}).png`,
-    });
+    out.push({ id: `2dart-${i}`, category: "2D Art", type: "image", src: `/portfolio/2dart-1 (${i}).png` });
   }
 
   // 3D Models — 30 images
   for (let i = 1; i <= 30; i++) {
-    out.push({
-      id: `3dmodel-${i}`,
-      category: "3D Models",
-      type: "image",
-      src: `/portfolio/3dmodel-1 (${i}).png`,
-    });
+    out.push({ id: `3dmodel-${i}`, category: "3D Models", type: "image", src: `/portfolio/3dmodel-1 (${i}).png` });
   }
 
   // Animations — 10 videos
   for (let i = 1; i <= 10; i++) {
-    out.push({
-      id: `anim-${i}`,
-      category: "Animations",
-      type: "video",
-      src: `/portfolio/anim-1 (${i}).mp4`,
-    });
+    out.push({ id: `anim-${i}`, category: "Animations", type: "video", src: `/portfolio/anim-1 (${i}).mp4` });
   }
 
   // Pixel Art — 4 images
   for (let i = 1; i <= 4; i++) {
-    out.push({
-      id: `pixelart-${i}`,
-      category: "Pixel Art",
-      type: "image",
-      src: `/portfolio/pixelart-1 (${i}).png`,
-    });
+    out.push({ id: `pixelart-${i}`, category: "Pixel Art", type: "image", src: `/portfolio/pixelart-1 (${i}).png` });
   }
 
-  // UI & Brands — 23 images
-  for (let i = 1; i <= 23; i++) {
-    out.push({
-      id: `uibrand-${i}`,
-      category: "UI & Brands",
-      type: "image",
-      src: `/portfolio/uibrand-1 (${i}).png`,
-    });
+  // UI & Brands — remaining images (excluding book covers)
+  const uibrandNums = [1,2,3,4,5,6,7,8,9,10,11,17,19,20,21,22,23];
+  uibrandNums.forEach((i, idx) => {
+    out.push({ id: `uibrand-${idx + 1}`, category: "UI & Brands", type: "image", src: `/portfolio/uibrand-1 (${i}).png` });
+  });
+
+  // Book Covers — 6 images
+  for (let i = 1; i <= 6; i++) {
+    out.push({ id: `bookcover-${i}`, category: "Book Covers", type: "image", src: `/portfolio/bookcover-1 (${i}).png` });
   }
 
   return out;
@@ -132,7 +113,7 @@ function PortfolioPage() {
               type="text"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              placeholder={'Search for "Pixel Art", "2D Art", "Animations"'}
+              placeholder={'Search for "Pixel Art", "2D Art", "Book Covers"'}
               className="w-full pl-10 pr-4 py-3 rounded-lg text-sm text-white placeholder:text-slate-400 focus:outline-none"
               style={{ backgroundColor: "#111827", border: "1px solid #1F2937" }}
             />
